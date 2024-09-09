@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Interaktive Kacheln</title>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <style>
+        /* ... Deine CSS-Styles hier ... */
+
+        .main-content {
+            margin-left: 200px;
+            /* Anpassen entsprechend der Sidebar-Breite */
+            padding: 10px;
+            position: relative;
+            /* Wichtig für die Positionierung der Kacheln */
+            min-height: 100vh;
+            /* Mindesthöhe, damit der Bereich scrollt */
+        }
+
+        .draggable {
+            width: 100px;
+            height: 100px;
+            padding: 5px;
+            background: red;
+            position: absolute;
+            cursor: move;
+            /* Optisches Feedback, dass Elemente verschiebbar sind */
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+            /* Erstellt ein Raster mit Spalten von mindestens 50px */
+            grid-gap: 10px;
+            /* Abstand zwischen den Kacheln */
+            align-items: start;
+        }
+
+        .tile-input {
+            width: 100%;
+            /* Sorgt dafür, dass das Textfeld die gesamte Kachelbreite einnimmt */
+            border: none;
+            /* Optional: Entfernt die Border des Textfelds */
+            /* Füge alle weiteren Styles hinzu, die du für das Textfeld benötigst */
+        }
+
+        .delete-icon {
+            position: absolute;
+            top: 0;
+            right: 0;
+            cursor: pointer;
+            color: #fff;
+            /* Weiße Schriftfarbe */
+            background: #f00;
+            /* Roter Hintergrund */
+            border-radius: 50%;
+            /* Kreisförmig */
+            padding: 4px 6px;
+            line-height: 1;
+            /* Verhindert zusätzlichen vertikalen Raum */
+            font-size: 14px;
+            /* Größe des "X" */
+            font-weight: bold;
+            /* Optional, macht das "X" dicker */
+        }
+
+        .sidebar {
+            height: 100%;
+            width: 200px;
+            position: fixed;
+
+            top: 0;
+            left: 0;
+            background-color: #111;
+            overflow-x: hidden;
+            padding-top: 20px;
+            color: white;
+        }
+
+        .sidebar h1 {
+            padding-left: 10px;
+        }
+
+        .sidebar button {
+            margin: 10px;
+            padding: 8px 16px;
+            background-color: green;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .sidebar ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .sidebar ul li a {
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            display: block;
+            transition: 0.3s;
+        }
+
+        .sidebar ul li a:hover {
+            background-color: #575757;
+        }
+
+        .modal {
+            display: none;
+            /* Versteckt das Modal standardmäßig */
+            position: fixed;
+            /* Bleibt an Ort und Stelle */
+            z-index: 2;
+            /* Liegt über anderen Elementen */
+            left: 0;
+            top: 0;
+            width: 100%;
+            /* Volle Breite */
+            height: 100%;
+            /* Volle Höhe */
+            overflow: auto;
+            /* Falls der Inhalt zu lang ist */
+            background-color: rgb(0, 0, 0);
+            /* Hintergrundfarbe */
+            background-color: rgba(0, 0, 0, 0.4);
+            /* Schwarz mit Opazität */
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            /* 15% vom oberen Rand und zentriert */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            /* 80% der Fensterbreite */
+        }
+
+        .close {
+            color: #aaaaaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <h1>Menü</h1>
+        <button onclick="createTile()">Add new Task</button>
+        <ul>
+            <li><a href="#" id="browseCollection">Browse Collection</a></li>
+            <li><a href="#" id="completedTasks">Completed Tasks</a></li>
+        </ul>
+    </div>
+
+    <div id="browseCollectionModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeBrowseCollectionModal">&times;</span>
+            <h2>Kacheln Sammlung</h2>
+            <div id="browseCollectionList">
+                <!-- Liste von vorgefertigten Kacheln -->
+                <div class="collection-item">Vorgefertigte Kachel 1</div>
+                <div class="collection-item">Vorgefertigte Kachel 2</div>
+                <!-- Füge weitere vorgefertigte Kacheln hier hinzu -->
+            </div>
+        </div>
+    </div>
+
+    <div id="completedTasksModal" class="modal">
+        <!-- Modal content -->
+        <div class="modal-content">
+            <span class="close" id="closeCompletedTasksModal">&times;</span>
+            <h2>Gelöschte Aufgaben</h2>
+            <ul id="completedTasksList"></ul>
+        </div>
+    </div>
+
+    <div class="main-content grid-container" id="mainContent">
+        <!-- Kacheln werden hier hinzugefügt -->
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <script>
+
+        // Globale Variable, um gelöschte Kacheln zu speichern
+        var deletedTasks = [];
+
+        function createTile(text) {
+            text = text || 'New Task';
+            var newTile = $('<div class="draggable ui-widget-content"><span class="delete-icon">&times;</span><div class="tile-content">' + text + '</div></div>');
+            $('#mainContent').append(newTile);
+
+            // Dragging-Funktionalität
+            newTile.draggable({
+                grid: [50, 50], // Rastergröße
+                cancel: ".delete-icon" // Verhindert das Dragging, wenn das Löschsymbol geklickt wird
+            });
+
+            // Löschfunktion in der createTile-Funktion
+            newTile.find('.delete-icon').click(function () {
+                var tileContent = $(this).siblings('.tile-content').text();
+                deletedTasks.push(tileContent); // Füge den Text der Kachel zu den gelöschten Aufgaben hinzu
+                $(this).parent('.draggable').remove(); // Entfernt die Kachel
+            });
+
+            // Doppelklick-Event zum Bearbeiten des Kacheltexts
+            newTile.dblclick(function () {
+                var tileContent = $(this).find('.tile-content');
+                var currentText = tileContent.text();
+                var inputField = $('<input type="text" class="tile-input" />').val(currentText);
+                tileContent.replaceWith(inputField);
+                inputField.focus();
+
+                // Event, wenn das Textfeld den Fokus verliert oder Enter gedrückt wird
+                inputField.on('blur keypress', function (e) {
+                    if (e.type === 'blur' || e.which === 13) {
+                        inputField.replaceWith('<div class="tile-content">' + inputField.val() + '</div>');
+                        // Verhindere, dass das Event erneut ausgelöst wird, falls Enter gedrückt wurde
+                        e.preventDefault();
+                    }
+                });
+            });
+        }
+
+        // Funktion zum Speichern des Textes nach der Bearbeitung
+        function saveText() {
+            var newText = $(this).val();
+            var tileDiv = $(this).parent();
+            tileDiv.html(newText);
+
+            // Mache die Kachel wieder draggable
+            tileDiv.draggable({
+                grid: [50, 50] // Rastergröße
+            });
+        }
+
+        function updateCompletedTasksList() {
+            var completedTasksList = document.getElementById('completedTasksList');
+            completedTasksList.innerHTML = ''; // Liste leeren
+
+            deletedTasks.forEach(function (taskContent) {
+                var listItem = document.createElement('li');
+                listItem.textContent = taskContent;
+
+                var recycleButton = document.createElement('button');
+                recycleButton.textContent = '♻️'; // Recycle-Symbol
+                recycleButton.onclick = function () { restoreTask(taskContent); };
+
+                var deleteButton = document.createElement('button');
+                deleteButton.textContent = '❌'; // Rotes X-Symbol
+                deleteButton.onclick = function () { permanentlyDeleteTask(taskContent); };
+
+                listItem.appendChild(recycleButton);
+                listItem.appendChild(deleteButton);
+
+                completedTasksList.appendChild(listItem);
+            });
+        }
+
+        document.getElementById('completedTasks').addEventListener('click', updateCompletedTasksList);
+
+
+        document.querySelectorAll('.collection-item').forEach(function (item) {
+            item.addEventListener('click', function () {
+                var text = this.textContent; // Nehme den Text aus der vorgefertigten Kachel
+                createTile(text); // Erstelle die neue Kachel mit dem vorgefertigten Text
+                closeBrowseCollectionModal(); // Schließe das "Browse Collection" Modal
+            });
+        });
+
+        // Funktion zum Wiederherstellen einer gelöschten Kachel
+        function restoreTask(taskContent) {
+            // Hier Logik, um die Kachel wiederherzustellen
+            createTile(taskContent); // Diese Funktion erstellt eine neue Kachel
+            // Entferne die Aufgabe aus der Liste der gelöschten Tasks
+            var index = deletedTasks.indexOf(taskContent);
+            if (index > -1) {
+                deletedTasks.splice(index, 1);
+            }
+            // Aktualisiere die Completed Tasks-Anzeige
+            updateCompletedTasksList();
+        }
+
+        // Funktion zum endgültigen Löschen einer Kachel
+        function permanentlyDeleteTask(taskContent) {
+            // Entferne die Aufgabe aus der Liste der gelöschten Tasks
+            var index = deletedTasks.indexOf(taskContent);
+            if (index > -1) {
+                deletedTasks.splice(index, 1);
+            }
+            // Aktualisiere die Completed Tasks-Anzeige
+            updateCompletedTasksList();
+        }
+
+        function closeCompletedTasksModal() {
+            $('#completedTasksModal').hide();
+        }
+
+        function closeBrowseCollectionModal() {
+            $('#browseCollectionModal').hide();
+        }
+
+        $(document).ready(function () {
+            // Event-Listener für das Öffnen des "Browse Collection" Modals
+            $('#browseCollection').on('click', function () {
+                document.getElementById('browseCollectionModal').style.display = 'block';
+            });
+
+            // Event-Listener für das Öffnen des "Completed Tasks" Modals
+            $('#completedTasks').on('click', function () {
+                document.getElementById('completedTasksModal').style.display = "block";
+            });
+
+            // Event-Listener für das Schließen der Modals
+            $('#closeBrowseCollectionModal').on('click', closeBrowseCollectionModal);
+
+            $('#closeCompletedTasksModal').on('click', closeCompletedTasksModal);
+
+            // Event-Listener für das Klicken außerhalb des Modals, um es zu schließen
+            $(window).on('click', function (event) {
+                if (event.target.id === 'browseCollectionModal') {
+                    $('#browseCollectionModal').hide();
+                }
+
+                if (event.target.id === 'completedTasksModal') {
+                    $('#completedTasksModal').hide();
+                }
+            });
+        });
+
+    </script>
+
+</body>
+
+</html>
